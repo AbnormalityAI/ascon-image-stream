@@ -9,6 +9,130 @@ PNG -> bytes -> Packer (16 B -> 128-bit) -> core -> Unpacker -> bytes -> PNG
                                              ^ Passthrough | Ascon(roundsPerCycle = 1|2|4)
 ```
 
+## Setup
+
+The Python code is the software reference. The Scala/Chisel code describes the hardware;
+`sbt test` checks that hardware in simulation against the reference vectors.
+You do not need an FPGA or a separate Scala installation to run the tests.
+
+### Prerequisites
+
+- Git to clone the repository.
+- **JDK 17 recommended** (the version used by CI). JDK 11 also works with this project's
+  sbt 1.10.2 / Scala 2.13.14 build. Use a JDK, not just a JRE.
+- **sbt runner**. The repository pins sbt 1.10.2 in `project/build.properties`;
+  the runner downloads that version, Scala, Chisel and the test libraries on first use.
+- **Python 3** with `pip` and `venv`; Python 3.11 is used by CI.
+- **Pillow**, installed in the virtual environment below, for the image tools and tests.
+- **firtool only for SystemVerilog emission**, not for the quickstart tests or Python demo.
+  Chisel 6 normally downloads its matching firtool automatically on supported systems.
+  See [Run](#run) if that download is unavailable on your machine.
+
+An internet connection is needed for installation and the first sbt run.
+The commands below use Bash or zsh. Choose one installation path for your operating system.
+
+### Ubuntu / Debian (also Ubuntu in WSL)
+
+Install Java, Python and the command-line tools:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl gnupg openjdk-17-jdk python3 python3-pip python3-venv
+```
+
+Add the official sbt package repository, then install the runner:
+
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823' | sudo gpg --dearmor -o /etc/apt/keyrings/scalasbt.gpg
+sudo chmod 644 /etc/apt/keyrings/scalasbt.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/scalasbt.gpg] https://repo.scala-sbt.org/scalasbt/debian all main' | sudo tee /etc/apt/sources.list.d/sbt.list
+sudo apt-get update
+sudo apt-get install -y sbt
+```
+
+If you already configured the sbt repository, use its existing key/repository setup rather
+than adding it again. Official alternatives, including RPM packages and SDKMAN, are listed
+on the [sbt download page](https://www.scala-sbt.org/download/).
+
+### macOS
+
+With [Homebrew](https://brew.sh/) installed:
+
+```bash
+brew install git python sbt
+brew install --cask temurin@17
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+The two `export` commands select JDK 17 for this terminal, even if Homebrew installed a newer
+Java as an sbt dependency. Add them to your shell startup file (usually `~/.zshrc`) if you
+want that selection in future terminals.
+
+If you prefer Coursier for the sbt runner, install Java, Git and Python as above, then use
+`brew install coursier && coursier setup` instead of `brew install sbt`.
+Follow its prompts and reopen the terminal when it asks. The
+[Scala installation guide](https://docs.scala-lang.org/getting-started/install-scala.html)
+has Coursier commands for Linux and macOS without Homebrew too.
+
+### Windows
+
+For the same shell commands as Linux, use Ubuntu in WSL. On Windows 11 or a supported
+Windows 10 installation, open **PowerShell as Administrator** and run:
+
+```powershell
+wsl --install
+```
+
+Restart if prompted, open Ubuntu, finish creating its Linux user, then follow the
+Ubuntu / Debian section above inside Ubuntu. Clone into your Linux home directory.
+See [Microsoft's WSL installation guide](https://learn.microsoft.com/en-us/windows/wsl/install)
+if WSL is already installed or your Windows version needs different steps.
+
+### Quickstart: clone, test, run the demo
+
+Run these commands in a terminal after installing the tools above:
+
+```bash
+git clone https://github.com/AbnormalityAI/ascon-image-stream.git
+cd ascon-image-stream
+
+# Check that Java 17 (or 11) and Python 3 are available.
+java -version
+python3 --version
+
+# Keep Python packages separate from your system Python.
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install pillow
+
+# Software reference and image-tool tests.
+python3 -m unittest discover -s python -p 'test_*.py' -v
+
+# Hardware simulation tests. Run from the repository root.
+sbt test
+
+# Generate a 128x128 grayscale image and encrypt/decrypt it in software.
+python3 python/imgtool.py gen test.png
+python3 python/demo.py test.png out/
+```
+
+A passing run reports **8 Python tests (`OK`)** and **21 Scala tests (all passed)**.
+The first sbt run can take longer while it downloads dependencies; later test runs are
+about two minutes on the CI machine. The image tests simulate roughly 16 KB twice.
+
+Open `test.png` (the original), `out/noise.png` (ciphertext shown as an image) and
+`out/decrypted.png` (the recovered original). The demo also writes `out/original.bin`
+and prints the authentication tag. This is a **software demo**, not an FPGA run.
+Its fixed key and nonce are test data only, not a safe pattern for encrypting real images.
+
+In each new terminal, `cd` back into the repository and run `source .venv/bin/activate`
+before using the Python commands. Run `deactivate` when you are finished.
+If Python reports `No module named PIL`, activate that environment and rerun
+`python3 -m pip install pillow`. If Java or sbt is not found, reopen the terminal after
+installation and check your `PATH` / `JAVA_HOME`.
+
 ## Layout
 | Path | Content |
 | --- | --- |
@@ -21,12 +145,22 @@ PNG -> bytes -> Packer (16 B -> 128-bit) -> core -> Unpacker -> bytes -> PNG
 | `.github/workflows/ci.yml` | `sbt test` + Python tests on PRs |
 
 ## Run
+
+The [quickstart](#quickstart-clone-test-run-the-demo) runs both test suites and the software demo.
+For optional SystemVerilog emission, run from the repository root:
+
+```bash
+sbt "runMain ascon.Main ascon 4"
+# Or emit the passthrough pipeline:
+sbt "runMain ascon.Main passthrough"
 ```
-python3 -m unittest discover -s python -p 'test_*.py'   # needs pillow
-sbt test                                                # ~2 min (image test simulates ~16k bytes x2)
-python3 python/imgtool.py gen test.png && python3 python/demo.py test.png out/   # software demo
-sbt "runMain ascon.Main ascon 4"                        # emit SystemVerilog to generated/ (needs firtool)
-```
+
+Output goes to `generated/`. The Ascon argument `4` is rounds per cycle; `1` and `2`
+are also supported. Emission needs firtool. Chisel 6.5.0 normally downloads the matching
+binary; if this fails, follow the [Chisel installation guide](https://www.chisel-lang.org/docs/installation)
+and set `CHISEL_FIRTOOL_PATH` to the directory containing a compatible `firtool` binary.
+Verilog emission and synthesis are separate from the tests and have not been verified
+for this build; green tests establish simulation results, not FPGA or synthesis readiness.
 
 ## Interfaces
 * Stream: `Decoupled(UInt(8.W))` in and out (`ByteStreamIO`), the same for both cores.
