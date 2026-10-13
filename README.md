@@ -13,7 +13,7 @@ PNG -> bytes -> Packer (16 B -> 128-bit) -> core -> Unpacker -> bytes -> PNG
 | Path | Content |
 | --- | --- |
 | `python/ascon.py` | Golden model: AEAD128 encrypt/decrypt, `trace=[]` records the state after every round |
-| `python/test_ascon.py` | All 1089 official KATs (`LWC_AEAD_KAT_128_128.txt`, from github.com/ascon/ascon-c) |
+| `python/test_ascon.py` | All 1089 official KATs (`python/kat/`: the official `LWC_AEAD_KAT_128_128.txt` from github.com/ascon/ascon-c split into 5 parts at record boundaries, joined with a newline plus a final newline; the test checks the SHA-256 of the result against the official file) |
 | `python/imgtool.py`, `demo.py` | 128x128 grayscale PNG <-> 16384-byte binary; software-reference demo (original, noise, decrypted) |
 | `python/export_vectors.py` | Writes `vectors/` (format below). Deterministic |
 | `src/main/scala/ascon/` | `AsconRound`, `AsconPermutation`, `AsconCore` (FSM), `Stream.scala` (interfaces, Packer, Unpacker, PassthroughCore, `StreamTop`), `Main` (Verilog) |
