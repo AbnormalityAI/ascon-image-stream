@@ -2,12 +2,24 @@ import os, sys, unittest
 sys.path.insert(0, os.path.dirname(__file__))
 import ascon
 
-KAT = os.path.join(os.path.dirname(__file__), "LWC_AEAD_KAT_128_128.txt")
+KAT_DIR = os.path.join(os.path.dirname(__file__), "kat")
+# The official file (ascon-c, crypto_aead/asconaead128/LWC_AEAD_KAT_128_128.txt) is stored as 5 ordered
+# parts split at record boundaries; the concatenation must hash to the official file.
+KAT_SHA256 = "bbbc34692fe05e5fda0a3b025585622ab3e3747495e5e3655b29aae8c2a4bd33"
 
 
-def parse_kat(path):
+def kat_text():
+    parts = sorted(f for f in os.listdir(KAT_DIR) if f.endswith(".txt"))
+    return b"\n".join(open(os.path.join(KAT_DIR, f), "rb").read() for f in parts) + b"\n"
+
+
+
+def parse_kat(_=None):
+    import hashlib
+    raw = kat_text()
+    assert hashlib.sha256(raw).hexdigest() == KAT_SHA256, "KAT parts do not match the official file"
     out, cur = [], {}
-    for line in open(path):
+    for line in raw.decode().splitlines():
         line = line.strip()
         if not line:
             if cur:
@@ -22,7 +34,7 @@ def parse_kat(path):
 
 class Kat(unittest.TestCase):
     def test_all_official_kats(self):
-        kats = parse_kat(KAT)
+        kats = parse_kat()
         self.assertEqual(len(kats), 1089)
         for k in kats:
             ct = ascon.encrypt(k["Key"], k["Nonce"], k["AD"], k["PT"])
@@ -30,7 +42,7 @@ class Kat(unittest.TestCase):
             self.assertEqual(ascon.decrypt(k["Key"], k["Nonce"], k["AD"], k["CT"]), k["PT"])
 
     def test_tamper_rejected(self):
-        k = parse_kat(KAT)[500]
+        k = parse_kat()[500]
         bad = bytearray(k["CT"]); bad[-1] ^= 1
         self.assertIsNone(ascon.decrypt(k["Key"], k["Nonce"], k["AD"], bytes(bad)))
 
